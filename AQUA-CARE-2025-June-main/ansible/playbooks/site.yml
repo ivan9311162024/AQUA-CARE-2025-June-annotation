@@ -1,0 +1,7 @@
+# 主要的 Ansible Playbook 入口點
+# 執行 common role 中定義的通用配置任務
+
+- hosts: all
+  become: true
+  roles:
+    - common # 執行通用系統配置和軟體安裝

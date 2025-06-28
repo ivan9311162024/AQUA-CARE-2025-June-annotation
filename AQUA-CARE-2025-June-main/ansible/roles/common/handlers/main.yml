@@ -1,0 +1,17 @@
+# Common Role Handlers - 定義可被觸發的處理程序
+# 用於響應配置變更時執行的動作
+
+# 重啟服務處理程序
+- name: Restart service
+  service:
+    name: my_service
+    state: restarted
+
+# 重新載入服務配置
+- name: Reload configuration
+  command: systemctl reload my_service
+  when: config_changed
+
+# 強制執行所有待處理的 handlers
+- name: Notify on change
+  meta: flush_handlers

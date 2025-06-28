@@ -1,0 +1,46 @@
+# Common Role Tasks - 通用系統配置任務
+# 安裝基本軟體套件和 Python 環境
+
+# 安裝基本系統工具
+- name: Ensure common packages are installed
+  apt:
+    name:
+      - git # 版本控制工具
+      - curl # 命令行資料傳輸工具
+      - vim # 文字編輯器
+    state: present
+
+# 安裝最新版本的 Python3
+- name: Ensure the latest version of Python is installed
+  apt:
+    name: python3
+    state: latest
+
+# 安裝 Python 套件管理器
+- name: Ensure pip is installed
+  apt:
+    name: python3-pip
+    state: present
+
+# 安裝必要的 Python 套件
+- name: Install required Python packages
+  pip:
+    name:
+      - ansible # Ansible 自動化工具
+      - requests # HTTP 請求庫
+    state: latest
+
+# 建立應用程式目錄
+- name: Create a directory for application files
+  file:
+    path: /opt/myapp
+    state: directory
+
+# 複製應用程式檔案
+- name: Copy application files
+  copy:
+    src: files/
+    dest: /opt/myapp/
+    owner: root
+    group: root
+    mode: "0755"

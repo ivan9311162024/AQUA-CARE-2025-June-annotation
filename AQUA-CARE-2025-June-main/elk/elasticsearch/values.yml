@@ -1,0 +1,361 @@
+---
+# Elasticsearch Helm Chart 配置檔案
+# 用於在 Kubernetes 叢集中部署 Elasticsearch
+
+# === 基本叢集設定 ===
+clusterName: "elasticsearch"  # 叢集名稱
+nodeGroup: "master"          # 節點群組名稱
+
+# 主節點服務設定 (其他節點群組連線目標)
+# 格式：clusterName + "-" + nodeGroup
+masterService: ""
+
+# Elasticsearch 節點角色定義
+# 參考：https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-node.html#node-roles
+roles:
+  - master                    # 主節點：管理叢集狀態
+  - data                      # 資料節點：儲存和搜尋資料
+  - data_content              # 內容資料節點
+  - data_hot                  # 熱資料節點：頻繁存取的資料
+  - data_warm                 # 暖資料節點：較少存取的資料
+  - data_cold                 # 冷資料節點：很少存取的資料
+  - ingest                    # 攝取節點：資料預處理
+  - ml                        # 機器學習節點
+  - remote_cluster_client     # 遠端叢集客戶端
+  - transform                 # 資料轉換節點
+
+# === 叢集規模設定 ===
+replicas: 1                  # 副本數量
+minimumMasterNodes: 1        # 最小主節點數量
+
+esMajorVersion: ""           # Elasticsearch 主版本 (自動偵測)
+
+# === 配置檔案設定 ===
+# 可在此添加自訂的 elasticsearch.yml 和 log4j2.properties
+esConfig: {}
+#  elasticsearch.yml: |
+#    key:
+#      nestedkey: value
+#  log4j2.properties: |
+#    key = value
+
+# === 安全設定 ===
+createCert: true             # 自動建立 TLS 憑證
+
+esJvmOptions: {}             # JVM 選項設定
+#  processors.options: |
+#    -XX:ActiveProcessorCount=3
+
+# === 環境變數設定 ===
+# 額外的環境變數 (使用 Kubernetes env 語法)
+extraEnvs: []
+#  - name: MY_ENVIRONMENT_VAR
+#    value: the_value_goes_here
+
+# 從 Secret 或 ConfigMap 載入環境變數
+envFrom: []
+# - secretRef:
+#     name: env-secret
+# - configMapRef:
+#     name: config-map
+
+# === 認證設定 ===
+# 自動產生 Elasticsearch 認證憑據
+secret:
+  enabled: true              # 啟用自動產生 Secret
+  password: ""               # 密碼 (空白表示隨機產生)
+
+# === Secret 掛載設定 ===
+# 用於掛載憑證和授權檔案
+secretMounts: []
+#  - name: elastic-certificates
+#    secretName: elastic-certificates
+#    path: /usr/share/elasticsearch/config/certs
+#    defaultMode: 0755
+
+hostAliases: []
+#- ip: "127.0.0.1"
+#  hostnames:
+#  - "foo.local"
+#  - "bar.local"
+
+image: "docker.elastic.co/elasticsearch/elasticsearch"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+
+podAnnotations: {}
+# iam.amazonaws.com/role: es-cluster
+
+# 額外標籤
+labels: {}
+
+esJavaOpts: "" # 範例："-Xmx1g -Xms1g"
+
+resources:
+  requests:
+    cpu: "1000m"
+    memory: "2Gi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+initResources: {}
+# limits:
+#   cpu: "25m"
+#   # memory: "128Mi"
+# requests:
+#   cpu: "25m"
+#   memory: "128Mi"
+
+networkHost: 0.0.0.0
+
+volumeClaimTemplate:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 30Gi
+
+rbac:
+  create: false
+  serviceAccountAnnotations: {}
+  serviceAccountName: ""
+  automountToken: true
+
+podSecurityPolicy:
+  create: false
+  name: ""
+  spec:
+    privileged: true
+    fsGroup:
+      rule: RunAsAny
+    runAsUser:
+      rule: RunAsAny
+    seLinux:
+      rule: RunAsAny
+    supplementalGroups:
+      rule: RunAsAny
+    volumes:
+      - secret
+      - configMap
+      - persistentVolumeClaim
+      - emptyDir
+
+persistence:
+  enabled: true
+  labels:
+    # 為 StatefulSet 的 volumeClaimTemplate 添加預設標籤
+    enabled: false
+  annotations: {}
+
+extraVolumes: []
+# - name: extras
+#   emptyDir: {}
+
+extraVolumeMounts: []
+# - name: extras
+#   mountPath: /usr/share/extras
+#   readOnly: true
+
+extraContainers: []
+# - name: do-something
+#   image: busybox
+#   command: ['do', 'something']
+
+extraInitContainers: []
+# - name: do-something
+#   image: busybox
+#   command: ['do', 'something']
+
+# Pod 優先級類別設定，如下所定義：
+# https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""
+
+# 預設情況下，確保兩個 Pod 不會部署在同一節點上
+# 將此設定為區域可讓您將 Pod 分散到不同區域
+antiAffinityTopologyKey: "kubernetes.io/hostname"
+
+# Hard 表示只有在有足夠節點的情況下才會排程 Pod
+# 且永遠不會在同一節點上部署。設定為 soft 將採用「盡力而為」方式
+antiAffinity: "hard"
+
+# 節點親和性設定，如下所定義：
+# https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity-beta-feature
+nodeAffinity: {}
+
+# 預設為循序部署所有 Pod。設定為 parallel 將在啟動叢集時
+# 同時啟動所有 Pod
+podManagementPolicy: "Parallel"
+
+# 服務連結注入的環境變數未被使用，但當目前命名空間有許多服務時
+# 可能會導致 Elasticsearch 啟動緩慢。
+# 如果您遇到 Pod 啟動緩慢的問題，可能需要將此設定為 `false`。
+enableServiceLinks: true
+
+protocol: https
+httpPort: 9200
+transportPort: 9300
+
+service:
+  enabled: true
+  labels: {}
+  labelsHeadless: {}
+  type: LoadBalancer
+  # 考慮到所有端點都被視為「就緒」，即使 Pod 本身尚未就緒
+  # https://kubernetes.io/docs/reference/kubernetes-api/service-resources/service-v1/#ServiceSpec
+  publishNotReadyAddresses: false
+  nodePort: ""
+  annotations: {}
+  httpPortName: http
+  transportPortName: transport
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: ""
+
+updateStrategy: RollingUpdate
+
+# Pod 中斷預算的最大不可用設定
+# 預設值 1 將確保 Kubernetes 在維護期間不會允許超過 1 個
+# Pod 不可用
+maxUnavailable: 1
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# 等待 Elasticsearch 優雅停止的時間
+terminationGracePeriod: 120
+
+sysctlVmMaxMapCount: 262144
+
+readinessProbe:
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  successThreshold: 3
+  timeoutSeconds: 5
+
+# https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-health.html#request-params wait_for_status
+clusterHealthCheckParams: "wait_for_status=green&timeout=1s"
+
+## 使用替代排程器。
+## 參考：https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+##
+schedulerName: ""
+
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+
+# Enabling this will publicly expose your Elasticsearch instance.
+# Only enable this if you have security enabled on your cluster
+ingress:
+  enabled: false
+  annotations: {}
+  # kubernetes.io/ingress.class: nginx
+  # kubernetes.io/tls-acme: "true"
+  className: "nginx"
+  pathtype: ImplementationSpecific
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+nameOverride: ""
+fullnameOverride: ""
+healthNameOverride: ""
+
+lifecycle: {}
+# preStop:
+#   exec:
+#     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+# postStart:
+#   exec:
+#     command:
+#       - bash
+#       - -c
+#       - |
+#         #!/bin/bash
+#         # Add a template to adjust number of shards/replicas
+#         TEMPLATE_NAME=my_template
+#         INDEX_PATTERN="logstash-*"
+#         SHARD_COUNT=8
+#         REPLICA_COUNT=1
+#         ES_URL=http://localhost:9200
+#         while [[ "$(curl -s -o /dev/null -w '%{http_code}\n' $ES_URL)" != "200" ]]; do sleep 1; done
+#         curl -XPUT "$ES_URL/_template/$TEMPLATE_NAME" -H 'Content-Type: application/json' -d'{"index_patterns":['\""$INDEX_PATTERN"\"'],"settings":{"number_of_shards":'$SHARD_COUNT',"number_of_replicas":'$REPLICA_COUNT'}}'
+
+sysctlInitContainer:
+  enabled: true
+
+keystore: []
+
+networkPolicy:
+  ## Enable creation of NetworkPolicy resources. Only Ingress traffic is filtered for now.
+  ## In order for a Pod to access Elasticsearch, it needs to have the following label:
+  ## {{ template "uname" . }}-client: "true"
+  ## Example for default configuration to access HTTP port:
+  ## elasticsearch-master-http-client: "true"
+  ## Example for default configuration to access transport port:
+  ## elasticsearch-master-transport-client: "true"
+
+  http:
+    enabled: false
+    ## if explicitNamespacesSelector is not set or set to {}, only client Pods being in the networkPolicy's namespace
+    ## and matching all criteria can reach the DB.
+    ## But sometimes, we want the Pods to be accessible to clients from other namespaces, in this case, we can use this
+    ## parameter to select these namespaces
+    ##
+    # explicitNamespacesSelector:
+    #   # Accept from namespaces with all those different rules (only from whitelisted Pods)
+    #   matchLabels:
+    #     role: frontend
+    #   matchExpressions:
+    #     - {key: role, operator: In, values: [frontend]}
+
+    ## Additional NetworkPolicy Ingress "from" rules to set. Note that all rules are OR-ed.
+    ##
+    # additionalRules:
+    #   - podSelector:
+    #       matchLabels:
+    #         role: frontend
+    #   - podSelector:
+    #       matchExpressions:
+    #         - key: role
+    #           operator: In
+    #           values:
+    #             - frontend
+
+  transport:
+    ## Note that all Elasticsearch Pods can talk to themselves using transport port even if enabled.
+    enabled: false
+    # explicitNamespacesSelector:
+    #   matchLabels:
+    #     role: frontend
+    #   matchExpressions:
+    #     - {key: role, operator: In, values: [frontend]}
+    # additionalRules:
+    #   - podSelector:
+    #       matchLabels:
+    #         role: frontend
+    #   - podSelector:
+    #       matchExpressions:
+    #         - key: role
+    #           operator: In
+    #           values:
+    #             - frontend
+
+tests:
+  enabled: true
+

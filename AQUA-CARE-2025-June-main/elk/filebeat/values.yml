@@ -1,0 +1,272 @@
+---
+# Filebeat Helm Chart 配置檔案
+# 用於在 Kubernetes 叢集中部署 Filebeat 日誌收集器
+
+# === DaemonSet 配置 ===
+# Filebeat 以 DaemonSet 方式在每個節點上運行
+daemonset:
+  # DaemonSet 註解
+  annotations: {}
+  # 額外標籤
+  labels: {}
+  affinity: {}
+  # 啟用 DaemonSet 部署
+  enabled: true
+  
+  # === 環境變數設定 ===
+  # 從 ConfigMap 載入環境變數
+  envFrom: []
+  # - configMapRef:
+  #     name: config-secret
+  
+  # 從 Kubernetes Secret 載入 Elasticsearch 認證資訊
+  extraEnvs:
+    - name: "ELASTICSEARCH_USERNAME"
+      valueFrom:
+        secretKeyRef:
+          name: elasticsearch-master-credentials  # Secret 名稱
+          key: username                           # 使用者名稱金鑰
+    - name: "ELASTICSEARCH_PASSWORD"
+      valueFrom:
+        secretKeyRef:
+          name: elasticsearch-master-credentials  # Secret 名稱
+          key: password                           # 密碼金鑰
+  
+  # === 儲存卷設定 ===
+  # 額外的儲存卷
+  extraVolumes: []
+  # - name: extras
+  #   emptyDir: {}
+  
+  # 額外的儲存卷掛載
+  extraVolumeMounts: []
+  # - name: extras
+  #   mountPath: /usr/share/extras
+  #   readOnly: true
+  
+  # 網路設定
+  hostNetworking: false
+  
+  # === Filebeat 配置檔案 ===
+  # DaemonSet 模式的 filebeat.yml 配置
+  filebeatConfig:
+    filebeat.yml: |
+      # 輸入設定：收集容器日誌
+      filebeat.inputs:
+      - type: container                           # 輸入類型：容器日誌
+        paths:
+          - /var/log/containers/*.log             # 容器日誌路徑
+        processors:
+        - add_kubernetes_metadata:                # 添加 Kubernetes 元資料
+            host: ${NODE_NAME}                    # 主機名稱
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/" # 日誌路徑匹配
+
+      # 輸出設定：傳送到 Logstash
+      output.logstash:
+        hosts: ["logstash-logstash:5044"]         # Logstash 服務位址
+
+  # === 更新策略設定 ===
+  # 滾動更新時的最大不可用節點數
+  maxUnavailable: 1
+  nodeSelector: {}
+  
+  # === Secret 掛載設定 ===
+  # 掛載 Elasticsearch TLS 憑證
+  # 用於掛載憑證和其他敏感值
+  secretMounts:
+    - name: elasticsearch-master-certs
+      secretName: elasticsearch-master-certs
+      path: /usr/share/filebeat/certs/
+  #  - name: filebeat-certificates
+  #    secretName: filebeat-certificates
+  #    path: /usr/share/filebeat/certs
+  # 各種 Pod 安全內容設定。請注意，其中許多設定會影響 Filebeat 正常運作。
+  #
+  # - 容器執行的使用者。通常需要以 root (0) 身分執行，以便正確收集主機容器日誌。
+  # - 是否以特權容器執行 Filebeat 容器。除非在 OpenShift 等環境中運行，否則通常不必要。
+  securityContext:
+    runAsUser: 0
+    privileged: false
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "1000m"
+      memory: "200Mi"
+  tolerations: []
+
+deployment:
+  # 部署的註解
+  annotations: {}
+  # 額外標籤
+  labels: {}
+  affinity: {}
+  # 包含部署
+  enabled: false
+  # Filebeat 容器的額外環境變數
+  envFrom: []
+  # - configMapRef:
+  #     name: config-secret
+  extraEnvs:
+    - name: "ELASTICSEARCH_USERNAME"
+      valueFrom:
+        secretKeyRef:
+          name: elasticsearch-master-credentials
+          key: username
+    - name: "ELASTICSEARCH_PASSWORD"
+      valueFrom:
+        secretKeyRef:
+          name: elasticsearch-master-credentials
+          key: password
+  # 可讓您在 /usr/share/filebeat 中添加任何配置檔案
+  extraVolumes: []
+  # - name: extras
+  #   emptyDir: {}
+  extraVolumeMounts: []
+  # - name: extras
+  #   mountPath: /usr/share/extras
+  #   readOnly: true
+  # 例如部署用的 filebeat.yml
+  filebeatConfig:
+    filebeat.yml: |
+      filebeat.inputs:
+        - type: log
+          paths:
+            - /usr/share/filebeat/logs/filebeat
+
+      output.elasticsearch:
+        host: "${NODE_NAME}"
+        hosts: '["https://${ELASTICSEARCH_HOSTS:elasticsearch-master:9200}"]'
+        username: "${ELASTICSEARCH_USERNAME}"
+        password: "${ELASTICSEARCH_PASSWORD}"
+        protocol: https
+        ssl.certificate_authorities: ["/usr/share/filebeat/certs/ca.crt"]
+  nodeSelector: {}
+  # Secret 清單及其在 Pod 內的掛載路徑
+  # 用於掛載憑證和其他敏感值
+  secretMounts:
+    - name: elasticsearch-master-certs
+      secretName: elasticsearch-master-certs
+      path: /usr/share/filebeat/certs/
+  #  - name: filebeat-certificates
+  #    secretName: filebeat-certificates
+  #    path: /usr/share/filebeat/certs
+  #
+  # - 容器執行的使用者。
+  # Filebeat Deployment 用例不需要存取 Kubernetes 節點內部，因此不必以 root (0) 身分執行
+  # - 除非在 OpenShift 等環境中運行，否則通常不必要。
+  securityContext:
+    runAsUser: 0
+    privileged: false
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "1000m"
+      memory: "200Mi"
+  tolerations: []
+
+# 用於 Filebeat 部署的副本數
+replicas: 1
+
+extraContainers: ""
+# - name: dummy-init
+#   image: busybox
+#   command: ['echo', 'hey']
+
+extraInitContainers: []
+# - name: dummy-init
+
+# Filebeat 寫入資料的根目錄，用於在 Pod 重新啟動時持久化註冊表資料（檔案位置和其他元資料）。
+hostPathRoot: /var/lib
+
+dnsConfig: {}
+# 選項：
+#   - name: ndots
+#     value: "2"
+hostAliases: []
+#- ip: "127.0.0.1"
+#  hostnames:
+#  - "foo.local"
+#  - "bar.local"
+image: "docker.elastic.co/beats/filebeat"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+imagePullSecrets: []
+
+livenessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - |
+        #!/usr/bin/env bash -e
+        curl --fail 127.0.0.1:5066
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+readinessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - |
+        #!/usr/bin/env bash -e
+        filebeat test output
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+# Whether this chart should self-manage its service account, role, and associated role binding.
+managedServiceAccount: true
+
+clusterRoleRules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - nodes
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "apps"
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+
+podAnnotations: {}
+# iam.amazonaws.com/role: es-cluster
+
+# Custom service account override that the pod will use
+serviceAccount: ""
+
+# Annotations to add to the ServiceAccount that is created if the serviceAccount value isn't set.
+serviceAccountAnnotations: {}
+# eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/k8s.clustername.namespace.serviceaccount
+
+# How long to wait for Filebeat pods to stop gracefully
+terminationGracePeriod: 30
+# This is the PriorityClass settings as defined in
+# https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""
+
+updateStrategy: RollingUpdate
+
+# Override various naming aspects of this chart
+# Only edit these if you know what you're doing
+nameOverride: ""
+fullnameOverride: ""
+

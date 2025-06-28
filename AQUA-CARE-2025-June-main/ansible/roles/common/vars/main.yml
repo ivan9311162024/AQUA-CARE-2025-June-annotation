@@ -1,0 +1,6 @@
+# Common Role 變數定義檔案
+# 此檔案包含 common role 特定的變數
+# 可在此定義角色內使用的變數值
+
+# 範例變數定義
+# example_variable: "value"

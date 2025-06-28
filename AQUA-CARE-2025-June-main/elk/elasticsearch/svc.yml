@@ -1,0 +1,25 @@
+# Elasticsearch NodePort Service 配置
+# 
+# 將 Elasticsearch 服務暴露到外部網路
+# 使用 NodePort 類型允許從叢集外部存取
+# 
+# 配置說明：
+# - 內部端口：9200 (Elasticsearch HTTP API)
+# - 外部端口：32000 (NodePort)
+# - 目標 Pod 標籤：app=elasticsearch-master
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: default
+spec:
+  selector:
+    app: elasticsearch-master  # 選擇具有此標籤的 Pod
+  type: NodePort              # 服務類型：NodePort
+  ports:
+    - name: http
+      port: 9200              # 服務內部端口
+      targetPort: 9200        # Pod 目標端口
+      nodePort: 32000         # 外部存取端口  
+

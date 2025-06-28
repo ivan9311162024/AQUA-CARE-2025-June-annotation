@@ -1,0 +1,179 @@
+---
+# Kibana Helm Chart 配置檔案
+# 用於在 Kubernetes 叢集中部署 Kibana 視覺化介面
+
+# === Elasticsearch 連線設定 ===
+elasticsearchHosts: "https://elasticsearch-master:9200"          # Elasticsearch 連線位址
+elasticsearchCertificateSecret: elasticsearch-master-certs      # TLS 憑證 Secret
+elasticsearchCertificateAuthoritiesFile: ca.crt                 # CA 憑證檔案
+elasticsearchCredentialSecret: elasticsearch-master-credentials # 認證資訊 Secret
+
+# === 基本設定 ===
+replicas: 1                  # 副本數量
+
+# === 環境變數設定 ===
+# Node.js 記憶體限制設定，避免 OOM 錯誤
+extraEnvs:
+  - name: "NODE_OPTIONS"
+    value: "--max-old-space-size=1800"  # 設定最大舊空間記憶體為 1800MB
+#  - name: MY_ENVIRONMENT_VAR
+#    value: the_value_goes_here
+
+# 從 Secret 或 ConfigMap 載入環境變數
+envFrom: []
+# - secretRef:
+#     name: env-secret
+# - configMapRef:
+#     name: config-map
+
+# === Secret 掛載設定 ===
+# 用於掛載憑證和金鑰
+secretMounts: []
+#  - name: kibana-keystore
+#    secretName: kibana-keystore
+#    path: /usr/share/kibana/data/kibana.keystore
+#    subPath: kibana.keystore # 可選
+
+# === 主機別名設定 ===
+hostAliases: []
+#- ip: "127.0.0.1"
+#  hostnames:
+#  - "foo.local"
+#  - "bar.local"
+
+# === 容器映像設定 ===
+image: "docker.elastic.co/kibana/kibana"  # Kibana 官方映像
+imageTag: "8.5.1"                         # 版本標籤
+imagePullPolicy: "IfNotPresent"           # 映像拉取策略
+
+# === 標籤和註解 ===
+labels: {}                   # 額外標籤
+annotations: {}              # 額外註解
+podAnnotations: {}           # Pod 註解
+# iam.amazonaws.com/role: es-cluster
+
+# === 資源限制設定 ===
+resources:
+  requests:                  # 最小資源需求
+    cpu: "500m"              # CPU：0.5 核心
+    memory: "2Gi"            # 記憶體：2GB
+  limits:                    # 最大資源限制
+    cpu: "500m"              # CPU：0.5 核心
+    memory: "2Gi"            # 記憶體：2GB
+
+# === 網路設定 ===
+protocol: http               # 通訊協定
+serverHost: "0.0.0.0"        # 伺服器監聽位址
+healthCheckPath: "/app/kibana"  # 健康檢查路徑
+
+# === Kibana 配置檔案 ===
+# 可在此添加自訂的 kibana.yml 配置
+kibanaConfig: {}
+#   kibana.yml: |
+#     key:
+#       nestedkey: value
+
+# 如果使用 Pod 安全政策，可能需要指定安全內容以及服務帳戶
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+serviceAccount: ""
+
+# 是否在 Pod 中自動掛載服務帳戶權杖。通常 Kibana 不需要此功能
+automountToken: true
+
+# Pod 優先級類別設定，如下所定義：
+# https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""
+
+httpPort: 5601
+
+extraVolumes:
+  []
+  # - name: extras
+  #   emptyDir: {}
+
+extraVolumeMounts:
+  []
+  # - name: extras
+  #   mountPath: /usr/share/extras
+  #   readOnly: true
+  #
+
+extraContainers: []
+# - name: dummy-init
+#   image: busybox
+#   command: ['echo', 'hey']
+
+extraInitContainers: []
+# - name: dummy-init
+#   image: busybox
+#   command: ['echo', 'hey']
+
+updateStrategy:
+  type: "Recreate"
+
+service:
+  type: LoadBalancer
+  loadBalancerIP: ""
+  port: 5601
+  nodePort: ""
+  labels: {}
+  annotations: {}
+  # cloud.google.com/load-balancer-type: "Internal"
+  # service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+  # service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+  # service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+  # service.beta.kubernetes.io/cce-load-balancer-internal-vpc: "true"
+  loadBalancerSourceRanges: []
+  # 0.0.0.0/0
+  httpPortName: http
+
+ingress:
+  enabled: false
+  className: "nginx"
+  pathtype: ImplementationSpecific
+  annotations: {}
+  # kubernetes.io/ingress.class: nginx
+  # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: kibana-example.local
+      paths:
+        - path: /
+  #tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+readinessProbe:
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  successThreshold: 3
+  timeoutSeconds: 5
+
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+nameOverride: ""
+fullnameOverride: ""
+
+lifecycle: {}
+# preStop:
+#   exec:
+#     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+# postStart:
+#   exec:
+#     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+

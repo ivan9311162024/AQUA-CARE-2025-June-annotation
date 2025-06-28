@@ -1,0 +1,95 @@
+---
+# K3s Kubernetes 叢集安裝和配置 Playbook
+# 功能：
+# 1. 安裝 k3s 輕量級 Kubernetes 發行版
+# 2. 配置 kubeconfig 檔案
+# 3. 設定 kubectl 自動完成和別名
+# 4. 安裝 Helm 套件管理器
+# 5. 添加 Elastic Helm 儲存庫
+
+- name: Install k3s and configure kubeconfig
+  hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+    # 使用官方安裝腳本安裝 k3s
+    - name: Install k3s using official script
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    # 建立使用者目錄用於存放 k3s 配置
+    - name: Ensure .k3s directory exists in home
+      become: false
+      file:
+        path: "/home/ubuntu/.k3s"
+        state: directory
+        mode: "0755"
+
+    # 複製 k3s 配置檔案到使用者目錄
+    - name: Copy k3s.yaml to user's .k3s directory
+      copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "/home/ubuntu/.k3s/k3s.yaml"
+        remote_src: yes
+        owner: "ubuntu"
+        group: "ubuntu"
+        mode: "0644"
+
+    # 設定 KUBECONFIG 環境變數
+    - name: Set KUBECONFIG environment variable in .bashrc
+      lineinfile:
+        path: "/home/ubuntu/.bashrc"
+        line: "export KUBECONFIG=$HOME/.k3s/k3s.yaml"
+        state: present
+      become: no
+
+    # 啟用 kubectl 自動完成功能
+    - name: Enable kubectl autocompletion in .bashrc
+      lineinfile:
+        path: "/home/ubuntu/.bashrc"
+        line: "source <(kubectl completion bash)"
+        state: present
+      become: no
+
+    # 添加 kubectl 簡短別名
+    - name: Add kubectl alias to .bashrc
+      lineinfile:
+        path: "/home/ubuntu/.bashrc"
+        line: "alias k=kubectl"
+        state: present
+      become: no
+
+    # 為別名 k 設定自動完成
+    - name: Add kubectl completion for alias k to .bashrc
+      lineinfile:
+        path: "/home/ubuntu/.bashrc"
+        line: "complete -F __start_kubectl k"
+        state: present
+      become: no
+
+    # 測試 k3s 安裝狀態 - 顯示所有 Pod
+    - name: Display all pods in all namespaces
+      shell: kubectl get pod -A
+      environment:
+        KUBECONFIG: "/home/ubuntu/.k3s/k3s.yaml"
+      register: pods_output
+      changed_when: false
+
+    # 安裝 Helm 套件管理器
+    - name: Install Helm using official script
+      shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    # 添加 Elastic 官方 Helm 儲存庫
+    - name: Add elastic Helm repo
+      shell: helm repo add elastic https://helm.elastic.co
+      args:
+        creates: /home/ubuntu/.cache/helm/repository/elastic-index.yaml
+      become: false
+
+    # 更新 Helm 儲存庫索引
+    - name: Update Helm repos
+      shell: helm repo update
+      become: false

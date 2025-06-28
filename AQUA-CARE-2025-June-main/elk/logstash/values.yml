@@ -1,0 +1,318 @@
+---
+# Logstash Helm Chart 配置檔案
+# 用於在 Kubernetes 叢集中部署 Logstash 日誌處理器
+
+# === 基本設定 ===
+replicas: 1                  # 副本數量
+
+# === Logstash 配置檔案 ===
+# 可在此添加自訂的 logstash.yml 和 log4j2.properties
+# 注意：覆寫 logstash.yml 時，必須包含 `http.host: 0.0.0.0` 以確保探測正常運作
+logstashConfig: {}
+#  logstash.yml: |
+#    key:
+#      nestedkey: value
+#  log4j2.properties: |
+#    key = value
+
+# === Logstash Pipeline 配置 ===
+# 定義資料處理管道
+# 警告：映像中有硬編碼的 logstash.conf，需要先覆寫它
+logstashPipeline:
+  logstash.conf: |
+    # 輸入設定：接收來自 Filebeat 的資料
+    input {
+      beats {
+        port => 5044          # 監聽端口 5044
+      }
+    }
+    
+    # 輸出設定：將資料傳送到 Elasticsearch
+    output { 
+      elasticsearch { 
+        hosts => "https://elasticsearch-master:9200"                    # Elasticsearch 位址
+        cacert => "/usr/share/logstash/config/elasticsearch-master-certs/ca.crt"  # CA 憑證路徑
+        user => '${ELASTICSEARCH_USERNAME}'                             # Elasticsearch 使用者名稱
+        password => '${ELASTICSEARCH_PASSWORD}'                        # Elasticsearch 密碼
+      } 
+    }
+
+# === 自訂模式設定 ===
+# 自訂 Grok 模式目錄
+logstashPatternDir: "/usr/share/logstash/patterns/"
+logstashPattern: {}
+#    pattern.conf: |
+#      DPKG_VERSION [-+~<>\.0-9a-zA-Z]+
+
+# === 環境變數設定 ===
+# 從 Kubernetes Secret 載入 Elasticsearch 認證資訊
+extraEnvs: 
+  - name: "ELASTICSEARCH_USERNAME"
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials  # Secret 名稱
+        key: username                           # 使用者名稱金鑰
+  - name: "ELASTICSEARCH_PASSWORD"
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials  # Secret 名稱
+        key: password                           # 密碼金鑰
+
+# 從 Secret 或 ConfigMap 載入環境變數
+envFrom: []
+# - secretRef:
+#     name: env-secret
+# - configMapRef:
+#     name: config-map
+
+# 添加敏感資料到 Kubernetes Secrets
+secrets: []
+#  - name: "env"
+#    value:
+#      ELASTICSEARCH_PASSWORD: "LS1CRUdJTiBgUFJJVkFURSB"
+#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
+#  - name: "tls"
+#    value:
+#      ca.crt: |
+#        LS0tLS1CRUdJT0K
+#        LS0tLS1CRUdJT0K
+#        LS0tLS1CRUdJT0K
+#        LS0tLS1CRUdJT0K
+#      cert.crt: "LS0tLS1CRUdJTiBlRJRklDQVRFLS0tLS0K"
+#      cert.key.filepath: "secrets.crt" # 檔案路徑必須相對於 values.yaml 檔案
+
+# Secret 清單及其在 Pod 內的掛載路徑
+secretMounts:
+  - name: "elasticsearch-master-certs"
+    secretName: "elasticsearch-master-certs"
+    path: "/usr/share/logstash/config/elasticsearch-master-certs"
+
+hostAliases: []
+#- ip: "127.0.0.1"
+#  hostnames:
+#  - "foo.local"
+#  - "bar.local"
+
+image: "docker.elastic.co/logstash/logstash"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+imagePullSecrets: []
+
+podAnnotations: {}
+
+# 額外標籤
+labels: {}
+
+logstashJavaOpts: "-Xmx1g -Xms1g"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "1536Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1536Mi"
+
+volumeClaimTemplate:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+
+rbac:
+  create: false
+  serviceAccountAnnotations: {}
+  serviceAccountName: ""
+  annotations:
+    {}
+    #annotation1: "value1"
+    #annotation2: "value2"
+    #annotation3: "value3"
+
+podSecurityPolicy:
+  create: false
+  name: ""
+  spec:
+    privileged: false
+    fsGroup:
+      rule: RunAsAny
+    runAsUser:
+      rule: RunAsAny
+    seLinux:
+      rule: RunAsAny
+    supplementalGroups:
+      rule: RunAsAny
+    volumes:
+      - secret
+      - configMap
+      - persistentVolumeClaim
+
+persistence:
+  enabled: false
+  annotations: {}
+
+extraVolumes:
+  []
+  # - name: extras
+  #   emptyDir: {}
+
+extraVolumeMounts:
+  []
+  # - name: extras
+  #   mountPath: /usr/share/extras
+  #   readOnly: true
+
+extraContainers:
+  []
+  # - name: do-something
+  #   image: busybox
+  #   command: ['do', 'something']
+
+extraInitContainers:
+  []
+  # - name: do-something
+  #   image: busybox
+  #   command: ['do', 'something']
+
+# Pod 優先級類別設定，如下所定義：
+# https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""
+
+# 預設情況下，確保兩個 Pod 不會部署在同一節點上
+# 將此設定為區域可讓您將 Pod 分散到不同區域
+antiAffinityTopologyKey: "kubernetes.io/hostname"
+
+# Hard 表示只有在有足夠節點的情況下才會排程 Pod
+# 且永遠不會在同一節點上部署。設定為 soft 將採用「盡力而為」方式
+antiAffinity: "hard"
+
+# 節點親和性設定，如下所定義：
+# https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+nodeAffinity: {}
+
+# Pod 間親和性設定，如下所定義：
+# https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+podAffinity: {}
+
+# 預設為循序部署所有 Pod。設定為 parallel 將在啟動叢集時
+# 同時啟動所有 Pod
+podManagementPolicy: "Parallel"
+
+httpPort: 9600
+
+# 添加到 Logstash 的自訂端口
+extraPorts:
+  []
+  # - name: beats
+  #   containerPort: 5001
+
+updateStrategy: RollingUpdate
+
+# Pod 中斷預算的最大不可用設定
+# 預設值 1 將確保 Kubernetes 在維護期間不會允許超過 1 個
+# Pod 不可用
+maxUnavailable: 1
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# 等待 Logstash 優雅停止的時間
+terminationGracePeriod: 120
+
+# 探測
+# 預設探測使用 `httpGet`，需要在 `logstash.yml` 中包含 `http.host: 0.0.0.0`。
+# 如果需要，可以使用以下語法停用或覆寫探測：
+#
+# 停用存活性探測
+# livenessProbe: null
+#
+# 使用某些 exec 探測替換 httpGet 預設就緒性探測
+# readinessProbe:
+#   httpGet: null
+#   exec:
+#     command:
+#       - curl
+#      - localhost:9600
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 300
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 3
+
+## Use an alternate scheduler.
+## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+##
+schedulerName: ""
+
+nodeSelector: {}
+tolerations: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+lifecycle:
+  {}
+  # preStop:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+  # postStart:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+
+service:
+  annotations: {}
+  type: ClusterIP
+  loadBalancerIP: ""
+  ports:
+    - name: beats
+      port: 5044
+      protocol: TCP
+      targetPort: 5044
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+
+ingress:
+  enabled: false
+  annotations:
+    {}
+    # kubernetes.io/tls-acme: "true"
+  className: "nginx"
+  pathtype: ImplementationSpecific
+  hosts:
+    - host: logstash-example.local
+      paths:
+        - path: /beats
+          servicePort: 5044
+        - path: /http
+          servicePort: 8080
+  tls: []
+  #  - secretName: logstash-example-tls
+  #    hosts:
+  #      - logstash-example.local
+
